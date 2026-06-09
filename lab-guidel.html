@@ -1,0 +1,2514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wireshark SSH Brute Force Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep:       #060a0e;
+    --bg-card:       #0c1218;
+    --bg-card-hover: #111a24;
+    --bg-code:       #080e14;
+    --bg-output:     #061006;
+    --accent:        #00d4aa;
+    --accent-dim:    #00916e;
+    --accent-glow:   rgba(0,212,170,0.15);
+    --blue:          #00aaff;
+    --blue-dim:      #0077bb;
+    --amber:         #f0a500;
+    --amber-dim:     #a06800;
+    --red:           #ff4466;
+    --red-dim:       #992233;
+    --green-code:    #00ff9f;
+    --text-primary:  #d4e8f0;
+    --text-muted:    #5a7a88;
+    --text-dim:      #2a4455;
+    --border:        #1a2e3a;
+    --border-accent: #00443a;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Exo 2', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,170,0.012) 2px, rgba(0,212,170,0.012) 4px);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* ── HEADER ── */
+  .lab-header {
+    background: linear-gradient(135deg, #060a0e 0%, #0a1a14 40%, #060c18 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .lab-header::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--blue), transparent);
+  }
+  .header-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 2rem 1.5rem;
+  }
+  .header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--accent-glow);
+    border: 1px solid var(--accent-dim);
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    margin-bottom: 0.75rem;
+  }
+  .header-badge::before { content: '●'; font-size: 0.5rem; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .lab-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 50%, var(--blue) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .lab-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    font-weight: 300;
+    letter-spacing: 0.03em;
+  }
+  .header-meta {
+    text-align: right;
+  }
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+  .meta-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+  }
+  .meta-value {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+  }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .progress-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
+    display: flex;
+    justify-content: space-between;
+  }
+  .progress-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--blue));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+    width: 0%;
+  }
+
+  /* ── LAYOUT ── */
+  .lab-body {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem 4rem;
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 1.5rem;
+  }
+
+  /* ── SIDEBAR NAV ── */
+  .sidebar {
+    position: sticky;
+    top: 1rem;
+    height: fit-content;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-dim) transparent;
+  }
+  .sidebar::-webkit-scrollbar { width: 3px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 2px; }
+
+  .nav-section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0 0.75rem 0.4rem;
+    margin-top: 1rem;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    border: 1px solid transparent;
+    margin-bottom: 0.2rem;
+  }
+  .nav-item:hover { background: var(--bg-card-hover); border-color: var(--border); }
+  .nav-item.active { background: var(--accent-glow); border-color: var(--accent-dim); }
+  .nav-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    min-width: 1.4rem;
+  }
+  .nav-item.active .nav-num { color: var(--accent); }
+  .nav-label {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    line-height: 1.2;
+  }
+  .nav-item.active .nav-label { color: var(--text-primary); }
+  .nav-check {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .nav-item.completed .nav-check { opacity: 1; }
+
+  /* ── MAIN CONTENT ── */
+  .main-content { min-width: 0; }
+
+  .module {
+    display: none;
+    animation: fadeIn 0.25s ease;
+  }
+  .module.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── MODULE HEADER ── */
+  .module-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .module-num-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--bg-deep);
+    background: var(--accent);
+    padding: 0.3rem 0.55rem;
+    border-radius: 4px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    margin-top: 0.25rem;
+  }
+  .module-title-block h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    line-height: 1.1;
+  }
+  .module-title-block p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+    font-weight: 300;
+  }
+  .module-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+  }
+  .tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    letter-spacing: 0.06em;
+  }
+  .tag-teal { background: rgba(0,212,170,0.1); color: var(--accent); border: 1px solid var(--accent-dim); }
+  .tag-blue { background: rgba(0,170,255,0.1); color: var(--blue); border: 1px solid var(--blue-dim); }
+  .tag-amber { background: rgba(240,165,0,0.1); color: var(--amber); border: 1px solid var(--amber-dim); }
+  .tag-red { background: rgba(255,68,102,0.1); color: var(--red); border: 1px solid var(--red-dim); }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .card-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card-title::before {
+    content: '';
+    display: block;
+    width: 3px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  /* ── CODE BLOCKS ── */
+  .code-block {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin: 0.75rem 0;
+    position: relative;
+    overflow-x: auto;
+  }
+  .code-block pre {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--green-code);
+    line-height: 1.7;
+    white-space: pre;
+  }
+  .code-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    background: var(--border);
+    border: none;
+    border-radius: 3px;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .copy-btn:hover { color: var(--accent); background: var(--border-accent); }
+
+  /* ── EXPECTED OUTPUT ── */
+  .output-block {
+    background: var(--bg-output);
+    border: 1px solid #1a3a1a;
+    border-left: 3px solid #00aa44;
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin: 0.75rem 0;
+  }
+  .output-header {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    color: #00aa44;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .output-header::before { content: '▶ '; font-size: 0.55rem; }
+  .output-block pre {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: #88cc88;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* ── CALLOUT BOXES ── */
+  .callout {
+    border-radius: 6px;
+    padding: 0.9rem 1.1rem;
+    margin: 0.75rem 0;
+    display: flex;
+    gap: 0.75rem;
+  }
+  .callout-icon { font-size: 0.9rem; flex-shrink: 0; margin-top: 0.05rem; }
+  .callout-content { flex: 1; }
+  .callout-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+  }
+  .callout-text { font-size: 0.82rem; line-height: 1.6; color: var(--text-muted); }
+  .callout-text code { font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; background: rgba(255,255,255,0.06); padding: 0.1rem 0.3rem; border-radius: 3px; }
+
+  .callout-soc { background: rgba(0,170,255,0.07); border: 1px solid rgba(0,170,255,0.25); }
+  .callout-soc .callout-title { color: var(--blue); }
+  .callout-warn { background: rgba(240,165,0,0.07); border: 1px solid rgba(240,165,0,0.25); }
+  .callout-warn .callout-title { color: var(--amber); }
+  .callout-danger { background: rgba(255,68,102,0.07); border: 1px solid rgba(255,68,102,0.25); }
+  .callout-danger .callout-title { color: var(--red); }
+  .callout-tip { background: rgba(0,212,170,0.07); border: 1px solid rgba(0,212,170,0.25); }
+  .callout-tip .callout-title { color: var(--accent); }
+  .callout-mitre { background: rgba(180,80,255,0.07); border: 1px solid rgba(180,80,255,0.25); }
+  .callout-mitre .callout-title { color: #c080ff; }
+
+  /* ── STEP BLOCKS ── */
+  .step-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .step {
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.75rem;
+    background: var(--bg-card-hover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .step-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--bg-deep);
+    background: var(--accent-dim);
+    width: 1.6rem; height: 1.6rem;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-body { font-size: 0.83rem; line-height: 1.6; }
+  .step-body strong { color: var(--text-primary); }
+  .step-body code { font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; background: rgba(0,212,170,0.08); color: var(--accent); padding: 0.1rem 0.35rem; border-radius: 3px; }
+
+  /* ── TABLES ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin: 0.75rem 0;
+  }
+  .data-table th {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: rgba(0,212,170,0.06);
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--border);
+    text-align: left;
+  }
+  .data-table td {
+    padding: 0.55rem 0.9rem;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    line-height: 1.4;
+    vertical-align: top;
+  }
+  .data-table td code { font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: var(--green-code); background: var(--bg-code); padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .data-table tr:hover td { background: var(--bg-card-hover); }
+  .data-table .hl { color: var(--text-primary); font-weight: 500; }
+
+  /* ── PACKET DIAGRAM ── */
+  .packet-diagram {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.25rem;
+    margin: 0.75rem 0;
+    overflow-x: auto;
+  }
+  .pkt-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.25rem 0;
+    line-height: 1.5;
+  }
+  .pkt-arrow { color: var(--accent); font-size: 0.85rem; }
+  .pkt-attacker { color: var(--red); }
+  .pkt-vm { color: var(--blue); }
+  .pkt-flags { color: var(--amber); }
+  .pkt-note { color: var(--text-dim); font-size: 0.68rem; margin-left: 0.5rem; }
+  .pkt-divider { border: none; border-top: 1px dashed var(--border); margin: 0.5rem 0; }
+
+  /* ── FILTER REFERENCE ── */
+  .filter-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin: 0.75rem 0;
+  }
+  .filter-card {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+  }
+  .filter-card .filter-expr {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--green-code);
+    margin-bottom: 0.3rem;
+    word-break: break-all;
+  }
+  .filter-card .filter-desc {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* ── QA ACCORDION ── */
+  .qa-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+  .qa-question {
+    padding: 0.9rem 1.1rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    transition: background 0.15s;
+    user-select: none;
+  }
+  .qa-question:hover { background: var(--bg-card-hover); }
+  .qa-question.open { background: rgba(0,212,170,0.06); color: var(--accent); }
+  .qa-toggle { font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: var(--accent-dim); transition: transform 0.2s; }
+  .qa-question.open .qa-toggle { transform: rotate(45deg); }
+  .qa-answer {
+    display: none;
+    padding: 1rem 1.25rem;
+    background: var(--bg-code);
+    border-top: 1px solid var(--border);
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+  .qa-answer.open { display: block; }
+  .qa-answer code { font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; color: var(--green-code); background: rgba(0,255,159,0.06); padding: 0.1rem 0.35rem; border-radius: 3px; }
+  .qa-answer strong { color: var(--text-primary); }
+
+  /* ── NAVIGATION BUTTONS ── */
+  .module-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .nav-btn {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 0.6rem 1.4rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.18s;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .nav-btn-prev { background: transparent; border-color: var(--border); color: var(--text-muted); }
+  .nav-btn-prev:hover { border-color: var(--text-muted); color: var(--text-primary); }
+  .nav-btn-next { background: var(--accent); border-color: var(--accent); color: var(--bg-deep); }
+  .nav-btn-next:hover { background: #00ffcc; border-color: #00ffcc; }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .module-counter {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+  }
+
+  /* ── HIGHLIGHT ── */
+  .hl-accent { color: var(--accent); font-weight: 600; }
+  .hl-blue { color: var(--blue); }
+  .hl-amber { color: var(--amber); }
+  .hl-red { color: var(--red); }
+
+  p { font-size: 0.85rem; line-height: 1.7; color: var(--text-muted); margin-bottom: 0.75rem; }
+  h3 { font-family: 'Rajdhani', sans-serif; font-size: 1.05rem; font-weight: 600; letter-spacing: 0.04em; color: var(--text-primary); margin: 1.2rem 0 0.5rem; }
+  h4 { font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; color: var(--accent); margin: 1rem 0 0.4rem; letter-spacing: 0.06em; }
+  ul, ol { padding-left: 1.2rem; margin-bottom: 0.75rem; }
+  li { font-size: 0.83rem; color: var(--text-muted); line-height: 1.7; margin-bottom: 0.2rem; }
+  li code { font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; color: var(--accent); background: rgba(0,212,170,0.08); padding: 0.1rem 0.3rem; border-radius: 3px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+
+  /* ── TOPOLOGY DIAGRAM ── */
+  .topo {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+    margin: 0.75rem 0;
+  }
+  .topo-node {
+    display: inline-block;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.9rem;
+    margin: 0.4rem;
+    font-size: 0.7rem;
+  }
+  .topo-node.attacker { border-color: var(--red); color: var(--red); }
+  .topo-node.internet { border-color: var(--text-dim); color: var(--text-dim); }
+  .topo-node.azure { border-color: var(--blue); color: var(--blue); }
+  .topo-node.vm { border-color: var(--accent); color: var(--accent); }
+  .topo-node.wireshark { border-color: var(--amber); color: var(--amber); }
+  .topo-arrow { color: var(--text-dim); font-size: 1.2rem; vertical-align: middle; }
+  .topo-label { font-size: 0.62rem; color: var(--text-dim); margin-top: 0.2rem; }
+
+  /* ── CONTENT CAPTURE MARKERS (LinkedIn) ── */
+  .capture {
+    position: relative;
+    border-radius: 8px;
+    padding: 1rem 1.1rem 1rem 1.1rem;
+    margin: 1rem 0;
+    display: flex;
+    gap: 0.85rem;
+    align-items: flex-start;
+  }
+  .capture-screenshot {
+    background: linear-gradient(135deg, rgba(255,77,157,0.08), rgba(255,77,157,0.03));
+    border: 1px dashed #ff4d9d;
+  }
+  .capture-video {
+    background: linear-gradient(135deg, rgba(255,77,157,0.14), rgba(180,80,255,0.08));
+    border: 2px solid #ff4d9d;
+    box-shadow: 0 0 24px rgba(255,77,157,0.15);
+  }
+  .capture-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+  .capture-body { flex: 1; }
+  .capture-tag {
+    display: inline-block;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #ff4d9d;
+    background: rgba(255,77,157,0.12);
+    border: 1px solid rgba(255,77,157,0.4);
+    border-radius: 3px;
+    padding: 0.15rem 0.5rem;
+    margin-bottom: 0.45rem;
+  }
+  .capture-video .capture-tag {
+    color: #ff77b3;
+    background: rgba(255,77,157,0.2);
+    border-color: #ff4d9d;
+  }
+  .capture-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ffd6e8;
+    margin-bottom: 0.35rem;
+  }
+  .capture-desc {
+    font-size: 0.81rem;
+    line-height: 1.6;
+    color: var(--text-muted);
+  }
+  .capture-desc code {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.76rem;
+    color: var(--green-code);
+    background: rgba(0,255,159,0.07);
+    padding: 0.1rem 0.32rem;
+    border-radius: 3px;
+  }
+  .capture-desc strong { color: #ffb3d4; }
+  .capture-frame {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    color: #ff77b3;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed rgba(255,77,157,0.25);
+    letter-spacing: 0.04em;
+  }
+  .capture-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.62rem;
+    color: #ff4d9d;
+    font-weight: 700;
+  }
+
+  /* capture checklist */
+  .capture-checklist { display: flex; flex-direction: column; gap: 0.5rem; }
+  .cc-row {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.6rem 0.8rem;
+    background: var(--bg-card-hover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .cc-row.video-row { border-color: #ff4d9d; background: rgba(255,77,157,0.06); }
+  .cc-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 0.25rem 0;
+    border-radius: 4px;
+    background: rgba(255,77,157,0.15);
+    color: #ff4d9d;
+    border: 1px solid rgba(255,77,157,0.35);
+  }
+  .cc-text { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; }
+  .cc-text strong { color: var(--text-primary); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .lab-body { grid-template-columns: 1fr; }
+    .sidebar { position: static; max-height: none; }
+    .filter-grid { grid-template-columns: 1fr; }
+    .header-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="lab-header">
+  <div class="header-grid">
+    <div>
+      <div class="header-badge">🦈 PACKET ANALYSIS LAB · ACTIVE</div>
+      <h1 class="lab-title">Wireshark SSH Brute Force Analysis</h1>
+      <p class="lab-subtitle">Network-level forensics on live attack traffic — Azure VM · TCP/IP · SSH Protocol · SOC Blue Team</p>
+    </div>
+    <div class="header-meta">
+      <div class="meta-item">
+        <span class="meta-tag">TARGET</span>
+        <span class="meta-value">52.246.249.89:22</span>
+        <span class="meta-tag" style="margin-top:.5rem">MODULES</span>
+        <span class="meta-value">12 TOTAL</span>
+        <span class="meta-tag" style="margin-top:.5rem">MITRE</span>
+        <span class="meta-value">T1110 · T1046 · T1049</span>
+      </div>
+    </div>
+  </div>
+  <div class="progress-bar">
+    <div class="progress-label">
+      <span>LAB PROGRESS</span>
+      <span id="progress-text">0 / 12 COMPLETE</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BODY -->
+<div class="lab-body">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="nav-section-label">SETUP</div>
+    <div class="nav-item active" data-module="0" onclick="goModule(0)">
+      <span class="nav-num">01</span><span class="nav-label">Lab Overview &amp; Context</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="1" onclick="goModule(1)">
+      <span class="nav-num">02</span><span class="nav-label">Capture Setup &amp; tcpdump</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-section-label">PROTOCOL LAYER</div>
+    <div class="nav-item" data-module="2" onclick="goModule(2)">
+      <span class="nav-num">03</span><span class="nav-label">SSH Protocol Deep Dive</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="3" onclick="goModule(3)">
+      <span class="nav-num">04</span><span class="nav-label">Wireshark Display Filters</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-section-label">ATTACK ANALYSIS</div>
+    <div class="nav-item" data-module="4" onclick="goModule(4)">
+      <span class="nav-num">05</span><span class="nav-label">TCP Pattern Analysis</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="5" onclick="goModule(5)">
+      <span class="nav-num">06</span><span class="nav-label">Handshake Dissection</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="6" onclick="goModule(6)">
+      <span class="nav-num">07</span><span class="nav-label">Statistics &amp; Visualization</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="7" onclick="goModule(7)">
+      <span class="nav-num">08</span><span class="nav-label">Attacker Profiling</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-section-label">SYNTHESIS</div>
+    <div class="nav-item" data-module="8" onclick="goModule(8)">
+      <span class="nav-num">09</span><span class="nav-label">Correlate with Sentinel</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="9" onclick="goModule(9)">
+      <span class="nav-num">10</span><span class="nav-label">MITRE T1110 Network IOCs</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-item" data-module="10" onclick="goModule(10)">
+      <span class="nav-num">11</span><span class="nav-label">Hardening Validation</span><span class="nav-check">✓</span>
+    </div>
+    <div class="nav-section-label">REVIEW</div>
+    <div class="nav-item" data-module="11" onclick="goModule(11)">
+      <span class="nav-num">12</span><span class="nav-label">Interview Prep</span><span class="nav-check">✓</span>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main-content">
+
+<!-- ══════════════════════════════════════════════
+     MODULE 1: LAB OVERVIEW
+════════════════════════════════════════════════ -->
+<div class="module active" id="module-0">
+  <div class="module-header">
+    <div class="module-num-badge">01</div>
+    <div class="module-title-block">
+      <h2>Lab Overview &amp; Context</h2>
+      <p>What you're analyzing, why it matters, and how this connects to your Sentinel work</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">ORIENTATION</span>
+        <span class="tag tag-blue">SOC CONTEXT</span>
+        <span class="tag tag-amber">PREREQUISITES</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Lab Mission</div>
+    <p>In your Sentinel lab you detected SSH brute force at the <strong>log layer</strong> — syslog events, failed auth counts, KQL analytics rules. This lab goes one layer deeper: the <strong>packet layer</strong>. You'll capture raw TCP/SSH traffic flowing into your Azure VM and analyze it with Wireshark to understand exactly what an SSH brute force looks like on the wire.</p>
+    <p>This is the difference between reading a fire alarm log and watching the smoke move through a building. Both matter in SOC work.</p>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">🎯</span>
+    <div class="callout-content">
+      <div class="callout-title">SOC Context: Why Packet Analysis?</div>
+      <div class="callout-text">SIEM alerts tell you <em>what</em> happened. PCAPs tell you <em>how</em>. In incident response, a Tier 2/3 analyst may pull a packet capture to validate an alert, investigate evasion techniques, or build threat intelligence from attack tool fingerprints. This is evidence-grade data — network forensics.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Lab Topology</div>
+    <div class="topo">
+      <div>
+        <span class="topo-node attacker">🔴 ATTACKER<br><span class="topo-label">Scanning IPs<br>Hydra/Masscan/Custom</span></span>
+        <span class="topo-arrow"> ──── </span>
+        <span class="topo-node internet">🌐 INTERNET<br><span class="topo-label">Public Internet<br>Port 22 open</span></span>
+        <span class="topo-arrow"> ──── </span>
+        <span class="topo-node azure">☁️ AZURE NSG<br><span class="topo-label">TCP :22 Allow<br>Intentionally open</span></span>
+        <span class="topo-arrow"> ──── </span>
+        <span class="topo-node vm">🖥️ AZURE VM<br><span class="topo-label">52.246.249.89<br>Ubuntu · sshd</span></span>
+      </div>
+      <br>
+      <span class="topo-node wireshark" style="margin-top:.5rem">🦈 WIRESHARK<br><span class="topo-label">Local machine<br>Analyzing .pcap</span></span>
+      <br>
+      <span style="color:var(--text-dim);font-size:0.62rem;margin-top:.5rem;display:block">tcpdump captures on VM → SCP pcap to local → open in Wireshark</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">What You'll Learn</div>
+    <ul>
+      <li>How to capture live SSH attack traffic using <code>tcpdump</code> on a Linux VM</li>
+      <li>The exact TCP/SSH packet sequence that constitutes a brute force attempt</li>
+      <li>Wireshark display filters for SSH traffic triage and analysis</li>
+      <li>How to read SSH connection state from TCP flags alone</li>
+      <li>What attackers reveal about their tools through SSH version strings and KEX algorithms</li>
+      <li>Statistics views (Conversations, IO Graphs, Endpoints) for visualizing attack patterns</li>
+      <li>How to correlate packet-level findings with Sentinel KQL results</li>
+      <li>MITRE T1110 network-level indicators of compromise</li>
+      <li>How to validate that NSG/fail2ban hardening actually worked</li>
+    </ul>
+  </div>
+
+  <div class="capture capture-video">
+    <span class="capture-icon">🎬</span>
+    <div class="capture-body">
+      <span class="capture-tag">📍 LinkedIn Content · Capture Plan</span>
+      <div class="capture-title">This lab is marked for content capture</div>
+      <div class="capture-desc">Pink markers throughout the lab flag the <strong>6 screenshots</strong> and <strong>1 video</strong> worth grabbing for LinkedIn. They're placed at the most visually compelling, recruiter-friendly moments. The full shot list is consolidated in <strong>Module 12</strong>. Tip: capture as you go — re-creating attack traffic later is harder than grabbing it live.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Prerequisites</div>
+    <div class="step-list">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body"><strong>Azure VM running</strong> — 52.246.249.89 online with sshd active. NSG port 22 open (lab condition).</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body"><strong>Wireshark installed locally</strong> — Download from wireshark.org. Windows/macOS/Linux all work.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body"><strong>tcpdump on VM</strong> — Pre-installed on Ubuntu. Verify with <code>tcpdump --version</code>.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body"><strong>Completed Sentinel lab</strong> — This lab references Sentinel KQL queries and brute force data you've already generated.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" disabled>← PREV</button>
+    <span class="module-counter">MODULE 1 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(1)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 2: CAPTURE SETUP
+════════════════════════════════════════════════ -->
+<div class="module" id="module-1">
+  <div class="module-header">
+    <div class="module-num-badge">02</div>
+    <div class="module-title-block">
+      <h2>Capture Setup &amp; tcpdump</h2>
+      <p>Capturing SSH traffic on the Azure VM and getting it into Wireshark</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">TCPDUMP</span>
+        <span class="tag tag-blue">CAPTURE METHODS</span>
+        <span class="tag tag-amber">FILE TRANSFER</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Capture Methods Overview</div>
+    <p>You have two options for getting SSH traffic into Wireshark. <strong>Option A</strong> (recommended for Azure) is to run tcpdump on the VM, write a .pcap file, and transfer it locally. <strong>Option B</strong> is a remote live capture piped directly into Wireshark.</p>
+  </div>
+
+  <h3>Option A — tcpdump on VM → SCP to Local (Recommended)</h3>
+
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>SSH into your Azure VM</strong></div>
+    </div>
+  </div>
+  <div class="code-label">TERMINAL</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre>ssh azureuser@52.246.249.89</pre>
+  </div>
+
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body"><strong>Start a targeted capture on port 22</strong> — The <code>-w</code> flag writes raw packets to a .pcap file. The <code>port 22</code> filter keeps the file manageable.</div>
+    </div>
+  </div>
+  <div class="code-label">AZURE VM — CAPTURE SSH TRAFFIC FOR 5 MINUTES</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Capture all port 22 traffic for 5 minutes, write to pcap
+sudo tcpdump -i eth0 port 22 -w /tmp/ssh_bruteforce.pcap -v
+
+# With timestamp precision and snap length
+sudo tcpdump -i eth0 port 22 -w /tmp/ssh_bruteforce.pcap \
+  --time-stamp-precision=nano -s 0
+
+# Run for exactly 300 seconds then stop
+sudo timeout 300 tcpdump -i eth0 port 22 \
+  -w /tmp/ssh_bruteforce.pcap -s 0
+
+# Check how much was captured
+ls -lh /tmp/ssh_bruteforce.pcap</pre>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">EXPECTED TCPDUMP OUTPUT</div>
+    <pre>tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+^C
+4821 packets captured
+4821 packets received by filter
+0 packets dropped by kernel
+
+-rw-r--r-- 1 root root 2.3M May 27 14:22 /tmp/ssh_bruteforce.pcap</pre>
+  </div>
+
+  <div class="capture capture-screenshot">
+    <span class="capture-icon">📸</span>
+    <div class="capture-body">
+      <span class="capture-tag"><span class="capture-num">SCREENSHOT 01</span> · LinkedIn</span>
+      <div class="capture-title">tcpdump running on the live Azure VM</div>
+      <div class="capture-desc">Grab your terminal showing the SSH session into <code>52.246.249.89</code> with the tcpdump command running and the <strong>"X packets captured"</strong> result visible. This proves you ran a real capture on real cloud infrastructure — not a downloaded sample. Crop out any sensitive hostnames/usernames first.</div>
+      <div class="capture-frame">FRAME: Terminal window · command + capture summary visible · ~⅓ down your post</div>
+    </div>
+  </div>
+
+  <div class="callout callout-warn">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-content">
+      <div class="callout-title">Interface Name Check</div>
+      <div class="callout-text">Azure VMs may use <code>eth0</code>, <code>ens3</code>, or <code>ens5</code>. Run <code>ip link show</code> or <code>tcpdump -D</code> to list interfaces. Use <code>-i any</code> to capture all interfaces if unsure.</div>
+    </div>
+  </div>
+
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body"><strong>Transfer the pcap to your local machine</strong> using SCP</div>
+    </div>
+  </div>
+  <div class="code-label">YOUR LOCAL MACHINE</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Copy pcap from VM to local machine
+scp azureuser@52.246.249.89:/tmp/ssh_bruteforce.pcap ~/Desktop/
+
+# Windows (PowerShell) — same syntax with OpenSSH
+scp azureuser@52.246.249.89:/tmp/ssh_bruteforce.pcap C:\Users\YourName\Desktop\</pre>
+  </div>
+
+  <h3>Option B — Remote Live Capture (Advanced)</h3>
+  <div class="code-label">PIPE SSH → TCPDUMP → WIRESHARK</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># macOS/Linux — live remote capture piped into Wireshark
+ssh azureuser@52.246.249.89 "sudo tcpdump -i eth0 port 22 -s 0 -U -w -" | wireshark -k -i -
+
+# Windows — use WSL or plink (PuTTY)
+plink -ssh azureuser@52.246.249.89 "sudo tcpdump -i eth0 port 22 -s 0 -U -w -" | Wireshark.exe -k -i -</pre>
+  </div>
+
+  <h3>Opening the PCAP in Wireshark</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Open Wireshark → <strong>File → Open</strong> → select <code>ssh_bruteforce.pcap</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Verify packets loaded. You should see thousands of rows. The Protocol column will show TCP, SSH, and possibly TLSv1.3.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Apply initial filter: type <code>tcp.port == 22</code> in the display filter bar and press Enter.</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">EXPECTED WIRESHARK STATUS BAR</div>
+    <pre>Packets: 4821  ·  Displayed: 4821 (100.0%)  ·  Marked: 0  ·  Dropped: 0</pre>
+  </div>
+
+  <div class="callout callout-tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-content">
+      <div class="callout-title">No Live Attack Traffic? Use Sample PCAPs</div>
+      <div class="callout-text">If your VM is quiet during capture, use pre-made SSH brute force samples: <code>https://www.malware-traffic-analysis.net</code> or the PCAP archives at <code>https://wiki.wireshark.org/SampleCaptures</code> — look for ssh_brute_force.pcap. The analysis techniques are identical.</div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(0)">← PREV</button>
+    <span class="module-counter">MODULE 2 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(2)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 3: SSH PROTOCOL DEEP DIVE
+════════════════════════════════════════════════ -->
+<div class="module" id="module-2">
+  <div class="module-header">
+    <div class="module-num-badge">03</div>
+    <div class="module-title-block">
+      <h2>SSH Protocol Deep Dive</h2>
+      <p>Understanding the packet-level anatomy of SSH — what's visible, what's encrypted, and what brute force looks like</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">TCP/IP</span>
+        <span class="tag tag-blue">SSH2 PROTOCOL</span>
+        <span class="tag tag-amber">KEX</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">SSH Connection Phases</div>
+    <p>Every SSH connection — whether legitimate or an attack attempt — goes through the same phases. Understanding these phases tells you exactly which packets you're looking at in Wireshark.</p>
+  </div>
+
+  <h3>Phase 1: TCP Three-Way Handshake</h3>
+  <p>Before any SSH protocol exchange, TCP establishes a connection. In a brute force attack you'll see <em>hundreds of these per minute</em>.</p>
+  <div class="packet-diagram">
+    <div class="pkt-row"><span class="pkt-attacker">ATTACKER</span><span style="color:var(--text-dim)">                           </span><span class="pkt-vm">AZURE VM :22</span></div>
+    <hr class="pkt-divider">
+    <div class="pkt-row"><span class="pkt-attacker">SYN</span> <span class="pkt-arrow">────────────────────────►</span> <span class="pkt-note">[TCP Flags: S] seq=0 sport=random</span></div>
+    <div class="pkt-row"><span class="pkt-arrow">◄────────────────────────</span> <span class="pkt-vm">SYN-ACK</span> <span class="pkt-note">[TCP Flags: SA] seq=0 ack=1</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">ACK</span> <span class="pkt-arrow">────────────────────────►</span> <span class="pkt-note">[TCP Flags: A] Connection ESTABLISHED</span></div>
+  </div>
+
+  <h3>Phase 2: SSH Version Exchange (PLAINTEXT — Visible!)</h3>
+  <p>Immediately after the TCP handshake, both sides exchange version strings. These are <strong class="hl-accent">sent in plaintext</strong> — your best source of attacker tool intelligence.</p>
+  <div class="packet-diagram">
+    <div class="pkt-row"><span class="pkt-vm">VM sends:</span> <span style="color:#00ff9f">SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">Attacker:</span> <span style="color:#ff9966">SSH-2.0-libssh-0.9.6</span>  <span class="pkt-note">← tool fingerprint!</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">Attacker:</span> <span style="color:#ff9966">SSH-2.0-PUTTY_Release_0.79</span>  <span class="pkt-note">← or this</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">Attacker:</span> <span style="color:#ff9966">SSH-2.0-Go</span>  <span class="pkt-note">← or this (automated Go tool)</span></div>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">🔍</span>
+    <div class="callout-content">
+      <div class="callout-title">SOC Intelligence: Version String Fingerprinting</div>
+      <div class="callout-text">Common brute force tool signatures in SSH version strings: <code>libssh</code> (Hydra, custom scripts), <code>SSH-2.0-Go</code> (automated Go-based scanners), <code>SSH-2.0-paramiko</code> (Python-based tools, Metasploit modules), <code>SSH-2.0-JSCH</code> (Java SSH Client — often in enterprise scanners or automated attack tools). These strings are searchable threat intelligence.</div>
+    </div>
+  </div>
+
+  <h3>Phase 3: Key Exchange Initialization (KEX)</h3>
+  <p>Both sides negotiate encryption algorithms. The packet is visible but the payload data is algorithmic — not credentials. Wireshark labels this <code>SSH2_MSG_KEXINIT</code>.</p>
+  <div class="code-label">WIRESHARK PACKET DETAIL — KEXINIT</div>
+  <div class="code-block">
+    <pre>SSH Protocol
+  ├─ Packet Length: 1028
+  ├─ Padding Length: 4
+  └─ Key Exchange
+       Message Code: Key Exchange Init (20)
+       Cookie: a3f91bc2d4e85a71...
+       KEX Algorithms: curve25519-sha256,ecdh-sha2-nistp256,diffie-hellman-group14-sha256
+       Server Host Key Algorithms: rsa-sha2-512,rsa-sha2-256,ecdsa-sha2-nistp256
+       Encryption c→s: chacha20-poly1305@openssh.com,aes128-ctr
+       Encryption s→c: chacha20-poly1305@openssh.com,aes128-ctr
+       MAC c→s: umac-64-etm@openssh.com,hmac-sha2-256-etm
+       ...</pre>
+  </div>
+
+  <div class="callout callout-tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-content">
+      <div class="callout-title">KEX Algorithm Fingerprinting</div>
+      <div class="callout-text">Legitimate clients typically support many KEX algorithms in priority order. Automated brute force tools often offer a stripped-down, unusual, or non-standard KEX list — another tool fingerprint. Compare the attacker's KEXINIT against standard OpenSSH to spot anomalies.</div>
+    </div>
+  </div>
+
+  <h3>Phase 4: Authentication Exchange (ENCRYPTED)</h3>
+  <p>After key exchange completes, all authentication is encrypted. You <strong>cannot</strong> see usernames or passwords in the packets. However, you <em>can</em> observe:</p>
+  <ul>
+    <li>The <strong>number of SSH packets</strong> per connection (auth attempts correlate to packet count)</li>
+    <li>The <strong>connection duration</strong> — failed auth ends the connection quickly</li>
+    <li>The <strong>TCP RST or FIN</strong> pattern after each attempt (immediate disconnection = failed auth)</li>
+    <li>The <strong>timing delta</strong> between connections (sub-second = automated tool)</li>
+  </ul>
+
+  <h3>Complete Brute Force Connection Lifecycle</h3>
+  <div class="packet-diagram">
+    <div class="pkt-row"><span class="pkt-attacker">→ SYN</span>                                 <span class="pkt-note">TCP connect attempt</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← SYN-ACK</span>                             <span class="pkt-note">VM accepts connection</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ ACK</span>                                 <span class="pkt-note">Handshake complete</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← SSH-2.0-OpenSSH_8.9p1 Ubuntu</span>        <span class="pkt-note">VM version string (plaintext)</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ SSH-2.0-libssh-0.9.6</span>               <span class="pkt-note">Attacker version (plaintext) ← FINGERPRINT</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ KEXINIT</span>                             <span class="pkt-note">Attacker KEX algorithms</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← KEXINIT</span>                             <span class="pkt-note">VM KEX algorithms</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ KEX DH Init</span>                         <span class="pkt-note">DH key exchange</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← KEX DH Reply + NEW_KEYS</span>           <span class="pkt-note">Encryption starts here</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ [ENCRYPTED] Auth Request</span>           <span class="pkt-note">Username + password (encrypted)</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← [ENCRYPTED] Auth Failure</span>          <span class="pkt-note">Failed — sends disconnect</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ FIN/RST</span>                             <span class="pkt-note">Connection closed</span></div>
+    <div class="pkt-row" style="margin-top:.5rem;color:var(--amber)">
+      ↺ Repeat immediately for next password attempt
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(1)">← PREV</button>
+    <span class="module-counter">MODULE 3 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(3)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 4: DISPLAY FILTERS
+════════════════════════════════════════════════ -->
+<div class="module" id="module-3">
+  <div class="module-header">
+    <div class="module-num-badge">04</div>
+    <div class="module-title-block">
+      <h2>Wireshark Display Filters</h2>
+      <p>The exact filter syntax for SSH brute force triage — build a filter toolkit</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">DISPLAY FILTERS</span>
+        <span class="tag tag-blue">BPF SYNTAX</span>
+        <span class="tag tag-amber">TRIAGE</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-content">
+      <div class="callout-title">Display Filters vs Capture Filters</div>
+      <div class="callout-text"><strong>Capture filters</strong> (tcpdump BPF syntax) are applied during capture — they determine what gets recorded. <strong>Display filters</strong> (Wireshark syntax) are applied after — they show/hide packets from an existing pcap. They use different syntax. This module covers display filters.</div>
+    </div>
+  </div>
+
+  <h3>Tier 1 — Baseline SSH Filters</h3>
+  <div class="filter-grid">
+    <div class="filter-card">
+      <div class="filter-expr">tcp.port == 22</div>
+      <div class="filter-desc">All TCP traffic on port 22. Your starting point.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">ssh</div>
+      <div class="filter-desc">Show only packets Wireshark has decoded as SSH protocol.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">tcp.dstport == 22</div>
+      <div class="filter-desc">Inbound connections only — attacker → VM traffic.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">tcp.srcport == 22</div>
+      <div class="filter-desc">Outbound responses only — VM → attacker.</div>
+    </div>
+  </div>
+
+  <h3>Tier 2 — TCP Flag Filters (Brute Force Patterns)</h3>
+  <div class="filter-grid">
+    <div class="filter-card">
+      <div class="filter-expr">tcp.flags.syn == 1 and tcp.flags.ack == 0</div>
+      <div class="filter-desc">SYN-only packets. Each = one connection attempt. High count = scanning/brute force.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">tcp.flags.reset == 1</div>
+      <div class="filter-desc">RST packets. After failed auth, many tools send RST to close quickly. High RST count = aggressive tool.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">tcp.flags.fin == 1</div>
+      <div class="filter-desc">FIN packets — graceful close after auth failure. Less aggressive tools use FIN over RST.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">tcp.analysis.retransmission</div>
+      <div class="filter-desc">Retransmitted packets — can indicate network issues or a slow brute forcer hitting timeouts.</div>
+    </div>
+  </div>
+
+  <h3>Tier 3 — SSH Content Filters</h3>
+  <div class="filter-grid">
+    <div class="filter-card">
+      <div class="filter-expr">ssh.message_code == 20</div>
+      <div class="filter-desc">SSH KEXINIT packets only. One per connection attempt — useful for counting attempts.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">ssh.protocol</div>
+      <div class="filter-desc">Packets containing the SSH version string (the plaintext banner exchange).</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">frame contains "SSH-2.0"</div>
+      <div class="filter-desc">Raw text search for SSH version strings. Finds banners in any direction.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">frame contains "libssh"</div>
+      <div class="filter-desc">Find packets from libssh-based tools (Hydra, custom scripts). Swap for other tool strings.</div>
+    </div>
+  </div>
+
+  <h3>Tier 4 — IP &amp; Time Filters</h3>
+  <div class="filter-grid">
+    <div class="filter-card">
+      <div class="filter-expr">ip.src == 185.224.128.0</div>
+      <div class="filter-desc">Filter to a specific attacker IP. Replace with IPs you've identified.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">ip.src != 52.246.249.89</div>
+      <div class="filter-desc">Exclude your own VM IP — shows all external traffic only.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">frame.time_relative &lt; 60</div>
+      <div class="filter-desc">First 60 seconds of the capture. Useful for isolating a burst.</div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-expr">tcp.time_delta &lt; 0.1</div>
+      <div class="filter-desc">Packets arriving faster than 100ms. Flags automated tools.</div>
+    </div>
+  </div>
+
+  <h3>Tier 5 — Power Combinations</h3>
+  <div class="code-label">WIRESHARK DISPLAY FILTER — COMPLEX EXPRESSIONS</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># SYN packets to port 22 from non-RFC1918 IPs (external attackers)
+tcp.flags.syn == 1 and tcp.flags.ack == 0 and tcp.dstport == 22 and
+not (ip.src_host matches "^10\\..*|^192\\.168\\..*|^172\\.(1[6-9]|2[0-9]|3[01])\\..*")
+
+# All SSH connection attempts with RST close (fast failed auth pattern)
+tcp.dstport == 22 and (tcp.flags.syn == 1 or tcp.flags.reset == 1)
+
+# SSH version banners only (attacker fingerprinting)
+tcp.dstport == 22 and frame contains "SSH-2.0"
+
+# Short-lived SSH connections (brute force pattern — connect, fail, close)
+tcp.dstport == 22 and tcp.flags.syn == 1 and tcp.stream eq 0</pre>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">🎯</span>
+    <div class="callout-content">
+      <div class="callout-title">SOC Triage Order</div>
+      <div class="callout-text">In a real investigation: start with <code>tcp.port == 22</code> to scope the volume. Then <code>tcp.flags.syn == 1 and tcp.flags.ack == 0 and tcp.dstport == 22</code> to count inbound connection attempts. Then <code>frame contains "SSH-2.0"</code> to extract tool fingerprints. Then filter by specific attacker IPs from Sentinel to correlate your two data sources.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Filter Bar Quick Reference</div>
+    <table class="data-table">
+      <tr><th>Action</th><th>Wireshark Shortcut</th></tr>
+      <tr><td class="hl">Apply filter</td><td><code>Enter</code></td></tr>
+      <tr><td class="hl">Clear filter</td><td><code>Ctrl+Shift+X</code> or click ✕ in filter bar</td></tr>
+      <tr><td class="hl">Filter by selection</td><td>Right-click packet → Apply as Filter → Selected</td></tr>
+      <tr><td class="hl">Prepare filter</td><td>Right-click → Prepare as Filter (doesn't apply yet)</td></tr>
+      <tr><td class="hl">Save filter</td><td>Click + icon in filter bar → give it a name</td></tr>
+      <tr><td class="hl">Follow TCP stream</td><td>Right-click packet → Follow → TCP Stream</td></tr>
+      <tr><td class="hl">Colorize rule</td><td>View → Colorizing Rules</td></tr>
+    </table>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(2)">← PREV</button>
+    <span class="module-counter">MODULE 4 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(4)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 5: TCP PATTERN ANALYSIS
+════════════════════════════════════════════════ -->
+<div class="module" id="module-4">
+  <div class="module-header">
+    <div class="module-num-badge">05</div>
+    <div class="module-title-block">
+      <h2>TCP Connection Pattern Analysis</h2>
+      <p>Reading the attack signature from TCP flags alone — before touching SSH content</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">TCP FLAGS</span>
+        <span class="tag tag-red">ATTACK PATTERNS</span>
+        <span class="tag tag-blue">TIMING ANALYSIS</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">The Brute Force TCP Signature</div>
+    <p>A brute force attack has a distinctive TCP pattern. Instead of normal traffic (connect, use session for minutes, graceful close), you see: rapid SYN bursts → connection established → very short session → RST/FIN → immediate reconnect. This cycle repeats hundreds of times per minute.</p>
+  </div>
+
+  <h3>Pattern 1: SYN Burst Rate</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Apply filter: <code>tcp.flags.syn == 1 and tcp.flags.ack == 0 and tcp.dstport == 22</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Look at the <strong>Time column</strong>. In a brute force attack, timestamps between SYN packets will be sub-second (e.g., 0.002s apart). Legitimate logins are seconds or minutes apart.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Check the bottom status bar: <code>Displayed: 842</code> SYN packets in 5 minutes = <strong>168 connection attempts per minute</strong> = automated attack.</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">EXPECTED — SYN PACKET VIEW (FILTERED)</div>
+    <pre>No.    Time        Source           Destination      Protocol  Info
+1      0.000000    185.224.128.43   52.246.249.89    TCP       52341 → 22 [SYN] Seq=0
+2      0.002341    185.224.128.43   52.246.249.89    TCP       52342 → 22 [SYN] Seq=0
+3      0.004892    185.224.128.44   52.246.249.89    TCP       41821 → 22 [SYN] Seq=0
+4      0.005103    91.92.244.18     52.246.249.89    TCP       33291 → 22 [SYN] Seq=0
+...
+842    299.881234   Multiple IPs     52.246.249.89    TCP       [SYN] Seq=0</pre>
+  </div>
+
+  <div class="capture capture-screenshot">
+    <span class="capture-icon">📸</span>
+    <div class="capture-body">
+      <span class="capture-tag"><span class="capture-num">SCREENSHOT 02</span> · LinkedIn</span>
+      <div class="capture-title">The SYN flood — wall of connection attempts</div>
+      <div class="capture-desc">With the filter <code>tcp.flags.syn==1 && tcp.flags.ack==0 && tcp.dstport==22</code> applied, screenshot the packet list showing the rapid-fire SYN packets <strong>plus the status bar</strong> at the bottom (<code>Displayed: 842</code>). The sub-second timestamps in the Time column tell the story instantly — this is the "look how fast they're hammering" shot that makes non-technical viewers stop scrolling.</div>
+      <div class="capture-frame">FRAME: Wireshark packet list · filter bar + Time column + status bar count all visible</div>
+    </div>
+  </div>
+
+  <h3>Pattern 2: TCP Stream Length vs. Legitimate Sessions</h3>
+  <div class="card">
+    <div class="card-title">Session Duration Comparison</div>
+    <table class="data-table">
+      <tr><th>Session Type</th><th>TCP Stream Length</th><th>Packet Count</th><th>Duration</th></tr>
+      <tr><td class="hl">Brute Force Attempt</td><td>SYN → KEX → Auth → RST</td><td>12–20 packets</td><td class="hl-red">&lt; 2 seconds</td></tr>
+      <tr><td class="hl">Failed Legit Login</td><td>SYN → KEX → Auth → FIN</td><td>15–25 packets</td><td>3–8 seconds</td></tr>
+      <tr><td class="hl">Successful Login</td><td>SYN → KEX → Auth → Session</td><td>50+ packets</td><td class="hl-accent">Minutes–hours</td></tr>
+    </table>
+  </div>
+
+  <h3>Pattern 3: Following a Single TCP Stream</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Click any suspicious packet → Right-click → <strong>Follow → TCP Stream</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">In the stream window, you'll see the SSH version strings in plaintext at the top, then encrypted data (unreadable binary) for the auth phase.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Note the stream number (e.g., <code>tcp.stream eq 14</code>). You can filter to this exact conversation.</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">TCP STREAM FOLLOW — EXPECTED VIEW</div>
+    <pre>SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6
+SSH-2.0-libssh-0.9.6
+
+[Binary encrypted data — auth exchange, not readable]
+[Connection closes after ~1.2 seconds]</pre>
+  </div>
+
+  <h3>Pattern 4: RST vs. FIN Analysis</h3>
+  <div class="callout callout-soc">
+    <span class="callout-icon">🔍</span>
+    <div class="callout-content">
+      <div class="callout-title">RST vs FIN — What It Tells You</div>
+      <div class="callout-text"><strong>TCP RST (Reset):</strong> Abrupt connection termination. The attacker isn't waiting for graceful close — they're hammering as fast as possible. Hydra, Medusa, and high-speed custom tools typically use RST. <strong>TCP FIN:</strong> Graceful close. Slower tools, or tools that try to be less noisy, send FIN. If you see <em>only</em> RSTs: high-speed automated attack. Mix of FIN and RST: possibly multiple tools or slower tool with some timeout handling.</div>
+    </div>
+  </div>
+
+  <div class="code-label">WIRESHARK — ANALYZE RST vs FIN RATIO</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Filter RST packets to port 22 traffic
+tcp.flags.reset == 1 and tcp.port == 22
+
+# Filter FIN packets to port 22 traffic  
+tcp.flags.fin == 1 and tcp.port == 22
+
+# Check packet counts in status bar
+# RSTs >> FINs = aggressive automated tool
+# FINs ~= RSTs = mixed or slower tool</pre>
+  </div>
+
+  <h3>Pattern 5: Time Delta Between Connections</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Edit → Preferences → Columns → Add a <strong>Delta time</strong> column (<code>frame.time_delta</code>) to see time between each packet.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Filter to SYN packets only. A delta of <code>0.001–0.010</code> seconds between SYNs means 100–1000 attempts/second — definitively automated.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Human typing speed is ~1–5 seconds between attempts. Anything under 100ms is a machine.</div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(3)">← PREV</button>
+    <span class="module-counter">MODULE 5 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(5)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 6: HANDSHAKE DISSECTION
+════════════════════════════════════════════════ -->
+<div class="module" id="module-5">
+  <div class="module-header">
+    <div class="module-num-badge">06</div>
+    <div class="module-title-block">
+      <h2>SSH Handshake Dissection</h2>
+      <p>Drilling into individual packets — what each layer reveals about the attacker</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">PACKET DETAIL</span>
+        <span class="tag tag-blue">KEX ANALYSIS</span>
+        <span class="tag tag-amber">TOOL FINGERPRINTING</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">The Three Wireshark Panes</div>
+    <p>Wireshark has three panes. For SSH analysis you'll use all three:</p>
+    <ul>
+      <li><strong>Packet List (top)</strong> — rows of packets, filtered view</li>
+      <li><strong>Packet Details (middle)</strong> — expandable protocol tree for selected packet</li>
+      <li><strong>Packet Bytes (bottom)</strong> — raw hex + ASCII, your ground truth</li>
+    </ul>
+  </div>
+
+  <h3>Step-by-Step: Dissecting the SSH Version Packet</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Apply filter: <code>frame contains "SSH-2.0"</code> and click a packet where the <em>attacker is the source</em> (Source = attacker IP, Destination = 52.246.249.89)</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">In the Packet Details pane, expand <strong>Transmission Control Protocol</strong> → confirm it's TCP, note the source port (ephemeral: 32768–65535)</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Expand <strong>SSH Protocol</strong> → look for <code>Protocol: SSH-2.0-libssh-0.9.6</code> or similar attacker version string</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">In the Packet Bytes pane, you can see the raw ASCII of the version string — this is the <strong>plaintext evidence</strong> in your pcap</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">PACKET DETAILS PANE — SSH VERSION PACKET</div>
+    <pre>Frame 847: 78 bytes on wire
+Ethernet II
+  ├─ Src: a0:36:9f:12:3b:44
+  └─ Dst: 00:0d:3a:9c:17:f2
+Internet Protocol Version 4
+  ├─ Src: 185.224.128.43
+  └─ Dst: 52.246.249.89
+Transmission Control Protocol
+  ├─ Src Port: 52341
+  ├─ Dst Port: 22
+  ├─ Flags: 0x018 (PSH, ACK)
+  └─ Stream index: 14
+SSH Protocol
+  └─ Protocol: SSH-2.0-libssh-0.9.6   ← ATTACKER TOOL</pre>
+  </div>
+
+  <div class="capture capture-screenshot">
+    <span class="capture-icon">📸</span>
+    <div class="capture-body">
+      <span class="capture-tag"><span class="capture-num">SCREENSHOT 03</span> · LinkedIn</span>
+      <div class="capture-title">The plaintext tool fingerprint (money shot)</div>
+      <div class="capture-desc">Expand the <strong>SSH Protocol</strong> node in the Packet Details pane so the attacker's version string (<code>SSH-2.0-libssh-...</code> or <code>paramiko</code>/<code>Go</code>) is fully visible. This is the strongest single image in the whole lab — it shows you can fingerprint an attacker's tooling <strong>before a single byte is encrypted</strong>. Pairs perfectly with a caption about why version strings matter for threat intel.</div>
+      <div class="capture-frame">FRAME: Packet Details pane expanded · SSH Protocol → version string highlighted</div>
+    </div>
+  </div>
+
+  <h3>Dissecting the KEXINIT Packet</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Apply filter: <code>ssh.message_code == 20</code> — this shows only KEXINIT packets</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Click an attacker KEXINIT packet. In Packet Details, expand <strong>SSH Protocol → Key Exchange</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Note the <strong>KEX Algorithms</strong> list — compare to what OpenSSH normally proposes. Missing algorithms or unusual ordering = tool fingerprint</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">NORMAL OPENSSH KEXINIT — KEY ALGORITHMS (many options)</div>
+    <pre>KEX Algorithms: curve25519-sha256,curve25519-sha256@libssh.org,
+                ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,
+                diffie-hellman-group-exchange-sha256,
+                diffie-hellman-group16-sha512,
+                diffie-hellman-group18-sha512,
+                diffie-hellman-group14-sha256,
+                ext-info-c</pre>
+  </div>
+  <div class="output-block">
+    <div class="output-header">BRUTE FORCE TOOL KEXINIT — STRIPPED DOWN (suspicious)</div>
+    <pre>KEX Algorithms: diffie-hellman-group14-sha1,
+                diffie-hellman-group1-sha1
+                
+← Only 2 algorithms, both older/weaker — not OpenSSH default
+← Missing curve25519, ECDH, ext-info-c
+← Strong indicator of automated/custom tool</pre>
+  </div>
+
+  <h3>What the Packet Bytes Pane Reveals</h3>
+  <div class="card">
+    <div class="card-title">Hex Decode: SSH Version String</div>
+    <div class="code-block">
+      <pre>Offset  Hex                                        ASCII
+0000    53 53 48 2D 32 2E 30 2D 6C 69 62 73 73 68   SSH-2.0-libssh
+0010    2D 30 2E 39 2E 36 0D 0A                      -0.9.6..
+
+0D 0A = CRLF (carriage return + line feed)
+This is the complete plaintext version string visible in your pcap</pre>
+    </div>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">🔍</span>
+    <div class="callout-content">
+      <div class="callout-title">SOC Tip: Extracting Unique Attacker Strings</div>
+      <div class="callout-text">Use Wireshark's <strong>File → Export → Export Packet Bytes</strong> on a version string packet to extract the raw bytes. Or: File → Export Specified Packets with filter <code>frame contains "SSH-2.0"</code> — this gives you a mini-pcap of just the version exchange packets for reporting. These version strings are searchable in threat intel databases.</div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(4)">← PREV</button>
+    <span class="module-counter">MODULE 6 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(6)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 7: STATISTICS & VISUALIZATION
+════════════════════════════════════════════════ -->
+<div class="module" id="module-6">
+  <div class="module-header">
+    <div class="module-num-badge">07</div>
+    <div class="module-title-block">
+      <h2>Statistics &amp; Visualization</h2>
+      <p>Using Wireshark's built-in analytics to visualize attack scale, timing, and source distribution</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">IO GRAPHS</span>
+        <span class="tag tag-blue">CONVERSATIONS</span>
+        <span class="tag tag-amber">ENDPOINTS</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>1. Statistics → Conversations (TCP Tab)</h3>
+  <p>This view shows every unique TCP conversation in your pcap — the gold standard for counting attack connections.</p>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>Statistics → Conversations → TCP tab</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Sort by <strong>Packets</strong> descending. Short conversations (12–20 packets) with port 22 = brute force attempts. Long conversations = potential successful sessions.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Sort by <strong>Duration</strong> ascending. The shortest connections are the most aggressive attempts — sub-2-second conversations.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">Click any conversation row → <strong>Apply as Filter → Selected → A↔B</strong> to isolate that specific attacker conversation.</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">STATISTICS → CONVERSATIONS → TCP (EXPECTED)</div>
+    <pre>Address A          Port A  Address B        Port B  Packets  Bytes    Duration
+185.224.128.43     52341   52.246.249.89    22      16       2,847    0.823s
+185.224.128.43     52342   52.246.249.89    22      14       2,651    0.791s
+91.92.244.18       41821   52.246.249.89    22      15       2,743    0.812s
+...
+[842 total conversations, all ~1 second duration, all to port 22]</pre>
+  </div>
+
+  <div class="capture capture-screenshot">
+    <span class="capture-icon">📸</span>
+    <div class="capture-body">
+      <span class="capture-tag"><span class="capture-num">SCREENSHOT 04</span> · LinkedIn</span>
+      <div class="capture-title">Hundreds of 1-second connections</div>
+      <div class="capture-desc">Screenshot the <strong>Conversations → TCP</strong> window sorted by Duration, showing the column of sub-second connections all hitting port 22. The repeating ~0.8s durations are a clean, self-explanatory visual of automated behavior — great as a second image alongside the IO Graph.</div>
+      <div class="capture-frame">FRAME: Conversations dialog · TCP tab · Duration column sorted ascending</div>
+    </div>
+  </div>
+
+  <h3>2. Statistics → Endpoints (IPv4 Tab)</h3>
+  <p>Shows all unique IP addresses. Quickly identifies top attacking IPs by packet count.</p>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>Statistics → Endpoints → IPv4 tab</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Sort by <strong>Packets (Tx)</strong> — the top senders are your attacker IPs</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Check <strong>"Name resolution"</strong> checkbox in bottom-left — Wireshark will attempt reverse DNS on IPs</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">Click <strong>Map</strong> button (if GeoIP database is installed) to see geographic origin of IPs</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">STATISTICS → ENDPOINTS → IPv4 (EXPECTED)</div>
+    <pre>Address              Packets  Bytes     Tx Packets  Country
+52.246.249.89        9,642    1,842,341  4,821      US (Azure)
+185.224.128.43       1,284    248,432    642        RU / Seychelles
+91.92.244.18         876      163,284    438        NL
+104.168.151.79       612      118,923    306        US (residential)
+...</pre>
+  </div>
+
+  <h3>3. Statistics → IO Graphs</h3>
+  <p>Visualizes packet rate over time — attack bursts appear as sharp spikes.</p>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>Statistics → I/O Graphs</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Default graph shows all packets/second. Add a second graph line: click <strong>+ Add</strong>, set filter to <code>tcp.flags.syn == 1 and tcp.dstport == 22</code>, change color to red.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Set the <strong>interval</strong> to 1 second. Red SYN spikes show attack intensity over time — useful for identifying attack patterns (constant vs. burst).</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">Add a third line: filter <code>tcp.flags.reset == 1 and tcp.port == 22</code> in blue. RST rate should track SYN rate (one RST per failed attempt).</div>
+    </div>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">📊</span>
+    <div class="callout-content">
+      <div class="callout-title">SOC Context: IO Graph Patterns</div>
+      <div class="callout-text"><strong>Constant rate (flat line):</strong> Throttled tool with delay between attempts — trying to avoid detection. <strong>Burst pattern (spikes):</strong> Intermittent scans, possibly coordinated across multiple IPs. <strong>Ramp-up then plateau:</strong> Tool starting slow then going full speed. <strong>Pulse pattern:</strong> Possibly a botnet with centralized timing coordination. These patterns tell you about attacker sophistication and tool configuration.</div>
+    </div>
+  </div>
+
+  <div class="capture capture-video">
+    <span class="capture-icon">🎬</span>
+    <div class="capture-body">
+      <span class="capture-tag">🎥 THE VIDEO · 60–90 sec · LinkedIn</span>
+      <div class="capture-title">Screen-record the attack reveal</div>
+      <div class="capture-desc">This is your <strong>one video</strong> — the single most engaging clip in the lab. Record one continuous take (OBS, or your OS screen recorder) of these moves:
+        <ol style="margin-top:.5rem">
+          <li>Open the pcap with no filter — show the raw packet stream scrolling</li>
+          <li>Type <code>tcp.flags.syn==1 && tcp.dstport==22</code> and hit Enter — the count collapses to the attack attempts</li>
+          <li>Open <strong>Statistics → I/O Graphs</strong> and let the SYN-rate line render the spikes</li>
+          <li>Optional: hover a spike to show packets/second</li>
+        </ol>
+        Keep it under 90 seconds. You can narrate live or add captions after. The "filter → graph → spikes" arc is satisfying and reads instantly even on mute (most LinkedIn video is watched silent — add captions).
+      </div>
+      <div class="capture-frame">FORMAT: Square (1080×1080) or vertical (1080×1350) crops best in-feed · captions ON · &lt;90s</div>
+    </div>
+  </div>
+
+  <h3>4. Statistics → Protocol Hierarchy</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>Statistics → Protocol Hierarchy</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Shows what % of traffic is each protocol. In a brute force pcap, SSH will dominate. If you see other protocols alongside SSH (HTTP, DNS), your capture is broad — filter it down.</div>
+    </div>
+  </div>
+
+  <h3>5. Analyze → Expert Information</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>Analyze → Expert Information</strong> — Wireshark's automated analysis of anomalies</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Look for <strong>TCP RST in established session</strong> (aggressive tool), <strong>TCP Zero Window</strong> (VM under load from attack volume), <strong>TCP Retransmission</strong> (network stress).</div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(5)">← PREV</button>
+    <span class="module-counter">MODULE 7 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(7)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 8: ATTACKER PROFILING
+════════════════════════════════════════════════ -->
+<div class="module" id="module-7">
+  <div class="module-header">
+    <div class="module-num-badge">08</div>
+    <div class="module-title-block">
+      <h2>Attacker Profiling from Packets</h2>
+      <p>Extracting intelligence about the attacker, their tools, and their techniques from network evidence</p>
+      <div class="module-tags">
+        <span class="tag tag-red">THREAT INTEL</span>
+        <span class="tag tag-teal">TOOL ID</span>
+        <span class="tag tag-blue">IOC EXTRACTION</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">What You Can Extract</div>
+    <p>Even though SSH auth is encrypted, you can build a detailed attacker profile from packet metadata and the plaintext portions of the SSH handshake.</p>
+  </div>
+
+  <h3>Extraction 1: IP Address List (IOCs)</h3>
+  <div class="code-label">WIRESHARK — EXTRACT ATTACKER IPS</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Method 1: Statistics → Endpoints → IPv4 → Copy to clipboard
+# Then paste into spreadsheet and filter out your VM IP
+
+# Method 2: tshark command-line (if installed)
+tshark -r ssh_bruteforce.pcap \
+  -Y "tcp.flags.syn == 1 and tcp.flags.ack == 0 and tcp.dstport == 22" \
+  -T fields -e ip.src | sort | uniq -c | sort -nr
+
+# Output example:
+#   642   185.224.128.43
+#   438   91.92.244.18
+#   306   104.168.151.79</pre>
+  </div>
+
+  <h3>Extraction 2: Tool Version Strings</h3>
+  <div class="code-label">TSHARK — EXTRACT ALL SSH VERSION STRINGS FROM ATTACKERS</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Extract all unique SSH client version strings
+tshark -r ssh_bruteforce.pcap \
+  -Y "ssh.protocol and ip.dst == 52.246.249.89" \
+  -T fields -e ip.src -e ssh.protocol | sort | uniq
+
+# Wireshark alternative: frame contains "SSH-2.0" 
+# Then sort by SSH Protocol column</pre>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Common Tool Fingerprints</div>
+    <table class="data-table">
+      <tr><th>Version String</th><th>Tool / Context</th><th>Threat Level</th></tr>
+      <tr><td><code>SSH-2.0-libssh-0.x.x</code></td><td class="hl">Hydra, custom C tools</td><td class="hl-red">High — purpose-built brute force</td></tr>
+      <tr><td><code>SSH-2.0-paramiko_x.x.x</code></td><td class="hl">Python tools, Metasploit</td><td class="hl-red">High — scripted attack</td></tr>
+      <tr><td><code>SSH-2.0-Go</code></td><td class="hl">Automated Go scanners</td><td class="hl-red">High — internet-wide scanner</td></tr>
+      <tr><td><code>SSH-2.0-JSCH-x.x.x</code></td><td class="hl">Java SSH tools, Burp SSH</td><td class="hl-amber">Medium — may be enterprise scanner</td></tr>
+      <tr><td><code>SSH-2.0-OpenSSH_x.x</code></td><td class="hl">Standard OpenSSH client</td><td class="hl-amber">Medium — could be scripted or legit</td></tr>
+      <tr><td><code>SSH-2.0-PuTTY_Release</code></td><td class="hl">PuTTY client</td><td class="hl-accent">Lower — likely human, possibly scripted</td></tr>
+    </table>
+  </div>
+
+  <h3>Extraction 3: Timing Analysis</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">Filter: <code>ip.src == [attacker_ip] and tcp.flags.syn == 1</code> → look at time delta column</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">If delta is consistent (e.g., always 0.002s), the tool has a fixed thread count. If variable, it's adaptive or multi-threaded with dynamic load.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">Calculate attempts/minute: <code>(total SYNs from IP) / (capture duration in minutes)</code></div>
+    </div>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">🧠</span>
+    <div class="callout-content">
+      <div class="callout-title">Building a Threat Intelligence Report</div>
+      <div class="callout-text">From a single pcap of your Azure VM you can extract: attacker IPs (check VirusTotal, Shodan, AbuseIPDB), tool names (map to known malware/frameworks), KEX algorithm fingerprints (detect old/weak cryptography preference), attack rate (assess threat level), and timing patterns (distinguish targeted vs. spray-and-pray). This is the data that feeds threat intelligence platforms.</div>
+    </div>
+  </div>
+
+  <h3>Extraction 4: Port Source Analysis</h3>
+  <div class="code-label">TSHARK — ATTACKER SOURCE PORT PATTERNS</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Extract source ports used by top attacker — sequential ports = scripted
+tshark -r ssh_bruteforce.pcap \
+  -Y "ip.src == 185.224.128.43 and tcp.flags.syn == 1" \
+  -T fields -e tcp.srcport | head -20
+
+# Sequential source ports (52341, 52342, 52343...)
+# = single-threaded script incrementing ports
+# Random ports = multi-threaded or OS-assigned</pre>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(6)">← PREV</button>
+    <span class="module-counter">MODULE 8 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(8)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 9: CORRELATE WITH SENTINEL
+════════════════════════════════════════════════ -->
+<div class="module" id="module-8">
+  <div class="module-header">
+    <div class="module-num-badge">09</div>
+    <div class="module-title-block">
+      <h2>Correlating with Microsoft Sentinel</h2>
+      <p>Connecting your packet-level findings to your existing Sentinel KQL queries and SIEM data</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">SENTINEL</span>
+        <span class="tag tag-blue">KQL</span>
+        <span class="tag tag-amber">EVIDENCE CHAIN</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Two Layers of the Same Attack</div>
+    <p>Your Sentinel lab detected brute force through failed authentication log events. Wireshark shows the same attack from the TCP/SSH protocol layer. Together, they give you a complete evidence chain — network IOCs <em>and</em> host-level authentication data.</p>
+  </div>
+
+  <h3>Step 1: Extract Attacker IPs from Wireshark</h3>
+  <div class="code-label">TSHARK — GENERATE IP LIST FOR KQL QUERY</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># Extract top attacker IPs from pcap
+tshark -r ssh_bruteforce.pcap \
+  -Y "tcp.flags.syn == 1 and tcp.dstport == 22" \
+  -T fields -e ip.src | sort | uniq -c | sort -nr | head -10
+
+# Example output:
+#   642   185.224.128.43
+#   438   91.92.244.18  
+#   306   104.168.151.79</pre>
+  </div>
+
+  <h3>Step 2: Cross-Reference in Sentinel KQL</h3>
+  <div class="code-label">SENTINEL — LOG ANALYTICS WORKSPACE — KQL</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre">// Cross-reference pcap attacker IPs with Sentinel syslog data
+let pcap_attackers = dynamic(["185.224.128.43", "91.92.244.18", "104.168.151.79"]);
+Syslog
+| where TimeGenerated > ago(24h)
+| where Facility == "auth"
+| where SyslogMessage has "Failed password"
+| extend ClientIP = extract(@"from (\d+\.\d+\.\d+\.\d+)", 1, SyslogMessage)
+| where ClientIP in (pcap_attackers)
+| summarize
+    AuthAttempts = count(),
+    UniqueUsers = dcount(extract(@"for (\S+) from", 1, SyslogMessage))
+  by ClientIP
+| order by AuthAttempts desc
+
+// This links your packet evidence to authentication log evidence</pre>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">EXPECTED KQL RESULT — CORRELATED VIEW</div>
+    <pre">ClientIP          AuthAttempts  UniqueUsers
+185.224.128.43    4,218         127        ← matches pcap top attacker
+91.92.244.18      2,891         84
+104.168.151.79    1,963         51</pre>
+  </div>
+
+  <div class="capture capture-screenshot">
+    <span class="capture-icon">📸</span>
+    <div class="capture-body">
+      <span class="capture-tag"><span class="capture-num">SCREENSHOT 05</span> · LinkedIn</span>
+      <div class="capture-title">Dual-layer evidence chain — pcap meets SIEM</div>
+      <div class="capture-desc">Capture a side-by-side: Wireshark <strong>Endpoints/Conversations IP list</strong> next to your <strong>Sentinel KQL result</strong>, with the same attacker IPs circled/highlighted in both. This is the differentiator shot — it shows you don't just run one tool, you <strong>correlate network forensics with SIEM data</strong> like a real Tier 2 analyst. Use your editor to draw an arrow connecting the matching IPs.</div>
+      <div class="capture-frame">FRAME: Two panels side-by-side · matching IPs annotated · this is the "I think like an analyst" image</div>
+    </div>
+  </div>
+
+  <h3>Step 3: Timeline Correlation</h3>
+  <div class="code-label">KQL — ALIGN PCAP TIMEFRAME WITH SENTINEL</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre">// Match Sentinel events to your pcap capture window
+// (adjust TimeGenerated range to match your pcap timestamps)
+Syslog
+| where TimeGenerated between (datetime(2025-05-27T14:00:00Z) .. datetime(2025-05-27T14:05:00Z))
+| where SyslogMessage has "Failed password" or SyslogMessage has "Invalid user"
+| extend ClientIP = extract(@"from (\d+\.\d+\.\d+\.\d+)", 1, SyslogMessage)
+| summarize Attempts = count() by bin(TimeGenerated, 10s), ClientIP
+| order by TimeGenerated asc
+// Expected: spikes in 10-second bins align with SYN rate spikes in Wireshark IO graph</pre>
+  </div>
+
+  <h3>Step 4: Building the Evidence Chain</h3>
+  <div class="card">
+    <div class="card-title">Evidence Correlation Matrix</div>
+    <table class="data-table">
+      <tr><th>Evidence Type</th><th>Source</th><th>What It Proves</th></tr>
+      <tr><td class="hl">TCP SYN packets to :22</td><td>Wireshark pcap</td><td>Network-level connection attempts</td></tr>
+      <tr><td class="hl">SSH version strings</td><td>Wireshark pcap</td><td>Tool identity / IOC</td></tr>
+      <tr><td class="hl">SYN timing (&lt;10ms)</td><td>Wireshark pcap</td><td>Automated attack confirmed</td></tr>
+      <tr><td class="hl">Failed password events</td><td>Sentinel Syslog</td><td>Application-layer auth failures</td></tr>
+      <tr><td class="hl">Invalid user attempts</td><td>Sentinel Syslog</td><td>Username enumeration</td></tr>
+      <tr><td class="hl">Alert fired (KQL rule)</td><td>Sentinel Incident</td><td>Threshold breach = active attack</td></tr>
+      <tr><td class="hl">IP matches across both</td><td>Both sources</td><td>Definitive attacker identification</td></tr>
+    </table>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">📋</span>
+    <div class="callout-content">
+      <div class="callout-title">SOC Incident Documentation Template</div>
+      <div class="callout-text">When writing up this incident: <strong>Network Evidence:</strong> [N] unique attacker IPs identified via TCP SYN analysis, operating automated tool (SSH version: [string]), [X] connection attempts/minute over [Y] minute window. <strong>Host Evidence:</strong> [N] failed authentication events in Sentinel across [Z] unique usernames. <strong>Correlation:</strong> IP addresses match across both data sources with aligned timestamps confirming same attack campaign.</div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(7)">← PREV</button>
+    <span class="module-counter">MODULE 9 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(9)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 10: MITRE T1110 NETWORK IOCs
+════════════════════════════════════════════════ -->
+<div class="module" id="module-9">
+  <div class="module-header">
+    <div class="module-num-badge">10</div>
+    <div class="module-title-block">
+      <h2>MITRE T1110 Network-Level IOCs</h2>
+      <p>Mapping Wireshark findings to ATT&amp;CK sub-techniques and the network indicators that distinguish them</p>
+      <div class="module-tags">
+        <span class="tag tag-red">MITRE ATT&amp;CK</span>
+        <span class="tag tag-teal">T1110</span>
+        <span class="tag tag-blue">NETWORK IOCs</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-mitre">
+    <span class="callout-icon">🎯</span>
+    <div class="callout-content">
+      <div class="callout-title">T1110 — Brute Force (Credential Access)</div>
+      <div class="callout-text">MITRE ATT&CK T1110 covers four sub-techniques: .001 Password Guessing, .002 Password Cracking, .003 Password Spraying, and .004 Credential Stuffing. Each has distinct network signatures visible in Wireshark.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">T1110 Sub-Technique Network Signatures</div>
+    <table class="data-table">
+      <tr><th>Sub-technique</th><th>Network Pattern</th><th>Wireshark Filter</th></tr>
+      <tr>
+        <td><span class="hl-red">T1110.001</span><br>Password Guessing</td>
+        <td>Many connections from one IP, rapid SYN rate, sequential port use</td>
+        <td><code>ip.src == [ip] and tcp.dstport == 22 and tcp.flags.syn==1</code></td>
+      </tr>
+      <tr>
+        <td><span class="hl-red">T1110.003</span><br>Password Spraying</td>
+        <td>Many IPs, slower rate per IP, wider IP distribution, same timing pattern across sources</td>
+        <td><code>tcp.dstport == 22 and tcp.flags.syn==1</code> → check Endpoints for IP diversity</td>
+      </tr>
+      <tr>
+        <td><span class="hl-amber">T1110.004</span><br>Credential Stuffing</td>
+        <td>Similar to .001 but with variable timing (loading credential pairs), often paramiko/Go tools</td>
+        <td><code>frame contains "paramiko" or frame contains "SSH-2.0-Go"</code></td>
+      </tr>
+    </table>
+  </div>
+
+  <h3>Network IOC Checklist for T1110</h3>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong class="hl-accent">High SYN rate to :22</strong> — &gt;10 SYN packets/second to port 22 from single IP is a clear indicator</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body"><strong class="hl-accent">Short connection duration</strong> — Average TCP stream &lt;2 seconds with no data transfer beyond SSH handshake</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body"><strong class="hl-accent">High RST rate</strong> — RST count approximately equal to SYN count (one failed attempt per cycle)</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body"><strong class="hl-accent">Automated tool version strings</strong> — libssh, paramiko, Go, JSCH in SSH protocol field</div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body"><strong class="hl-accent">Stripped KEX algorithm list</strong> — Fewer algorithms than standard OpenSSH, especially missing modern curve25519</div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body"><strong class="hl-accent">IP reputation</strong> — Source IPs in known scanner/attack infrastructure ranges (check AS numbers)</div>
+    </div>
+  </div>
+
+  <h3>Additional MITRE Techniques Visible in SSH PCAPs</h3>
+  <table class="data-table">
+    <tr><th>Technique</th><th>What You'd See in Wireshark</th></tr>
+    <tr><td class="hl">T1046 — Network Service Scanning</td><td>SYN packets to port 22 from scanners that then don't complete handshake (TCP SYN scan pattern — SYN → SYN-ACK → RST without completing)</td></tr>
+    <tr><td class="hl">T1049 — System Network Connections Discovery</td><td>Not directly visible in inbound traffic, but outbound connections to C2 after a successful SSH auth would appear in same pcap</td></tr>
+    <tr><td class="hl">T1078 — Valid Accounts (if successful)</td><td>One TCP stream dramatically longer than all others, significant data exchange (commands, file transfers) = successful login after brute force</td></tr>
+  </table>
+
+  <h3>Wireshark T1110 Detection Rule (tshark)</h3>
+  <div class="code-label">TSHARK — AUTOMATED T1110 DETECTION</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre"># Detect IPs sending > 10 SYN packets to port 22 in the capture
+tshark -r ssh_bruteforce.pcap \
+  -Y "tcp.flags.syn == 1 and tcp.flags.ack == 0 and tcp.dstport == 22" \
+  -T fields -e ip.src -e frame.time_epoch | \
+  awk '{count[$1]++} END {for (ip in count) if (count[ip] > 10) print count[ip], ip}' | \
+  sort -nr
+
+# IPs exceeding threshold = T1110 indicators
+# Add GeoIP lookup via MaxMind database in tshark for enrichment</pre>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(8)">← PREV</button>
+    <span class="module-counter">MODULE 10 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(10)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 11: HARDENING VALIDATION
+════════════════════════════════════════════════ -->
+<div class="module" id="module-10">
+  <div class="module-header">
+    <div class="module-num-badge">11</div>
+    <div class="module-title-block">
+      <h2>Hardening Validation with Wireshark</h2>
+      <p>Proving that your NSG rules and fail2ban configuration actually stopped the attack — at the packet level</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">NSG VALIDATION</span>
+        <span class="tag tag-blue">FAIL2BAN</span>
+        <span class="tag tag-amber">BEFORE / AFTER</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Why Validate at the Packet Level?</div>
+    <p>Logs showing "fewer failed authentications" after hardening could mean the attack stopped, or it could mean the attack continued but logs are misconfigured. Packet-level evidence is definitive — you either see TCP connections completing or you don't.</p>
+  </div>
+
+  <h3>Validation Scenario 1: NSG Block (Pre-TCP Drop)</h3>
+  <p>When Azure NSG blocks port 22, attackers send SYN packets that receive <strong>no response</strong> — the packet is dropped at the network level before reaching your VM.</p>
+
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">After applying a restrictive NSG rule (deny all on port 22 except your IP), run another 5-minute capture: <code>sudo tcpdump -i eth0 port 22 -w /tmp/after_hardening.pcap</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">Open the new pcap in Wireshark. Apply: <code>tcp.dstport == 22 and ip.src != [your_legit_ip]</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body"><strong>Expected result:</strong> Zero packets. The VM never sees the SYN packets — they're dropped by Azure NSG before reaching the VM's network interface. Nothing to capture.</div>
+    </div>
+  </div>
+
+  <div class="output-block">
+    <div class="output-header">EXPECTED — AFTER NSG HARDENING (Deny :22 from 0.0.0.0/0)</div>
+    <pre>Packets: 0  ·  Displayed: 0 (0.0%)
+
+[No SSH traffic visible — NSG drops SYN at network perimeter]
+[VM's NIC never receives the packets]
+[This is the correct, expected result — hardening confirmed]</pre>
+  </div>
+
+  <div class="capture capture-screenshot">
+    <span class="capture-icon">📸</span>
+    <div class="capture-body">
+      <span class="capture-tag"><span class="capture-num">SCREENSHOT 06</span> · LinkedIn</span>
+      <div class="capture-title">Before / after — proof the fix worked</div>
+      <div class="capture-desc">Two Wireshark status bars stacked: <strong>before</strong> (<code>Displayed: 842</code> attack packets) and <strong>after</strong> (<code>Displayed: 0</code>). This is the closer for your post — most people show the attack; far fewer show they <strong>remediated and validated it at the packet level</strong>. That's the difference between "I watched an attack" and "I stopped one and proved it." Strong final image.</div>
+      <div class="capture-frame">FRAME: Two stacked Wireshark windows/status bars · before vs after counts · label each clearly</div>
+    </div>
+  </div>
+
+  <h3>Validation Scenario 2: fail2ban (Post-TCP, Pre-Auth Block)</h3>
+  <p>fail2ban operates at the firewall level on the VM — it lets the TCP connection reach the VM but blocks IPs after a threshold of failed attempts. The difference is visible in Wireshark.</p>
+
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">After fail2ban is active, run the capture again. Apply filter: <code>tcp.dstport == 22</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body"><strong>What you'll see for banned IPs:</strong> SYN arrives → VM sends SYN-ACK → ACK → then immediate RST from VM (iptables reject). No SSH handshake completes.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body"><strong>For new unban IPs:</strong> You'll still see the initial SSH handshake complete, but after fail2ban threshold (e.g., 5 attempts), subsequent SYN packets get RST immediately.</div>
+    </div>
+  </div>
+
+  <div class="packet-diagram">
+    <div style="color:var(--text-dim);margin-bottom:.4rem">FAIL2BAN BANNED IP PATTERN:</div>
+    <div class="pkt-row"><span class="pkt-attacker">→ SYN</span>         <span class="pkt-note">Attacker connects</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← SYN-ACK</span>      <span class="pkt-note">VM TCP stack responds (before iptables)</span></div>
+    <div class="pkt-row"><span class="pkt-attacker">→ ACK</span>          <span class="pkt-note">Handshake complete at TCP level</span></div>
+    <div class="pkt-row"><span class="pkt-vm">← RST</span>           <span class="pkt-note">fail2ban iptables rule rejects — no SSH data</span></div>
+    <div style="color:var(--text-dim);font-size:.7rem;margin-top:.3rem">This is different from NSG block: VM still sees the packets, TCP still connects, but fails at application layer firewall</div>
+  </div>
+
+  <h3>Before/After Comparison Procedure</h3>
+  <div class="code-label">CAPTURING PRE AND POST HARDENING PCAPS</div>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+    <pre># BEFORE: Capture with open port 22
+sudo timeout 300 tcpdump -i eth0 port 22 -w /tmp/before_hardening.pcap -s 0
+
+# Apply hardening (NSG rule or fail2ban activation)
+
+# AFTER: Capture under same conditions
+sudo timeout 300 tcpdump -i eth0 port 22 -w /tmp/after_hardening.pcap -s 0
+
+# Transfer both files to local machine
+scp azureuser@52.246.249.89:/tmp/*.pcap ~/Desktop/
+
+# Comparison metrics in Wireshark:
+# 1. Total packet count (fewer = hardening effective)
+# 2. Unique attacking IPs (fewer = blocking working)
+# 3. Completed SSH handshakes (zero = full block)
+# 4. Average connection duration (should show RST pattern)</pre>
+  </div>
+
+  <div class="callout callout-soc">
+    <span class="callout-icon">✅</span>
+    <div class="callout-content">
+      <div class="callout-title">Hardening Validation Checklist</div>
+      <div class="callout-text">A complete hardening validation demonstrates: (1) Network-level block — NSG pcap shows zero inbound :22 traffic from untrusted IPs. (2) Host-level block — fail2ban pcap shows RST after threshold, no SSH version exchange completing for banned IPs. (3) Sentinel corroboration — KQL shows zero failed auth events post-hardening from blocked IPs. (4) Legitimate access preserved — your own IP can still complete SSH handshake and authenticate. Document all four for a complete defense-in-depth proof.</div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(9)">← PREV</button>
+    <span class="module-counter">MODULE 11 OF 12</span>
+    <button class="nav-btn nav-btn-next" onclick="goModule(11)">NEXT →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODULE 12: INTERVIEW PREP
+════════════════════════════════════════════════ -->
+<div class="module" id="module-11">
+  <div class="module-header">
+    <div class="module-num-badge">12</div>
+    <div class="module-title-block">
+      <h2>Interview Prep &amp; SOC Context</h2>
+      <p>Questions you'll face in SOC analyst interviews — with full answers grounded in this lab</p>
+      <div class="module-tags">
+        <span class="tag tag-teal">INTERVIEW</span>
+        <span class="tag tag-blue">SOC ANALYST</span>
+        <span class="tag tag-amber">TECHNICAL DEPTH</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>Technical Packet Analysis Questions</h3>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      Walk me through what an SSH brute force attack looks like at the packet level.
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "An SSH brute force at the packet level shows a distinctive TCP pattern. Each attempt starts with a standard three-way handshake — SYN, SYN-ACK, ACK. Then the SSH version strings are exchanged in plaintext — that's actually where you can fingerprint the attacker's tool. After the version exchange, both sides do a KEX Init to negotiate encryption algorithms, then the DH key exchange completes and encryption starts. The auth attempt itself is encrypted, but the session is extremely short — typically under 2 seconds — and ends with either a TCP RST (aggressive tool) or FIN. This cycle repeats hundreds of times per minute. The key indicator is the ratio of SYN packets to unique source ports to port 22 — in a brute force, every SYN generates its own short-lived TCP stream."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      What Wireshark display filters would you apply first when triaging SSH-related traffic?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "My triage sequence: First, <code>tcp.port == 22</code> to scope total SSH volume. Then <code>tcp.flags.syn == 1 and tcp.flags.ack == 0 and tcp.dstport == 22</code> — this counts inbound connection attempts; the packet count tells me immediately if I'm looking at a brute force. Then <code>frame contains "SSH-2.0"</code> to see version strings and fingerprint attacker tools — this is plaintext and actionable for threat intel. Finally, filter by specific IPs from my SIEM to correlate the two data sources. I'd also check Statistics → Conversations to see the duration distribution — brute force attempts are all under 2 seconds, legitimate sessions run much longer."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      SSH traffic is encrypted. What can you actually determine from a Wireshark capture?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "More than most people expect. The SSH version string exchange happens in plaintext — you can see the exact client software version string, which often fingerprints the attack tool: libssh points to Hydra or custom C tools, paramiko means Python scripts or Metasploit, SSH-2.0-Go means an automated Go scanner. The KEX Init is visible — attackers using stripped-down or non-standard algorithm lists reveal their tools. At the TCP layer, you get connection timing (sub-100ms between attempts = automated), RST vs FIN patterns (RST = aggressive), session duration distribution (brute force = all &lt;2 seconds), and source IP data for threat intel. The only thing truly opaque is the credential content — you can't see usernames or passwords — but everything about the attack mechanics and tooling is visible."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      How do you differentiate SSH brute force from legitimate failed login attempts in a pcap?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "Three key differentiators. First, <strong>rate</strong>: brute force tools operate in milliseconds — I've seen 100+ connection attempts per minute. Legitimate users might try a password twice, maybe three times. Second, <strong>session duration</strong>: a brute force attempt completes the SSH handshake and disconnects in under 2 seconds. A human taking multiple tries still takes 3–10 seconds per attempt because of authentication timeout handling. Third, <strong>tool version strings</strong>: legitimate users show standard SSH client versions — OpenSSH, PuTTY. Brute force tools show libssh, paramiko, or Go. A fourth signal is source IP: legitimate users come from known addresses, brute force comes from VPS/hosting provider IP ranges or known scanner infrastructure — verifiable via ASN lookup."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      What's the difference between a Wireshark display filter and a capture filter?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "Capture filters use BPF (Berkeley Packet Filter) syntax and run during packet capture — they determine what gets recorded. For example, <code>port 22</code> in tcpdump. These are efficient because they reduce file size, but you can't recover packets you didn't capture. Display filters use Wireshark's own syntax and apply to an existing pcap — they show or hide packets without removing them. <code>tcp.port == 22</code> is a display filter. For forensic analysis I prefer capturing broadly then filtering in Wireshark, because you preserve evidence you might not know you need yet. For long-running production captures where storage matters, targeted capture filters make sense."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      How would you use packet data to validate that a security control like fail2ban is actually working?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "I'd take a before/after approach. Before hardening: capture SSH traffic and document the baseline — SYN rate, unique attacking IPs, completed SSH handshakes. After applying fail2ban: capture again under identical conditions. For banned IPs I should see TCP connections completing — SYN, SYN-ACK, ACK — but then an immediate RST from the VM with no SSH version exchange, because iptables is rejecting the connection before sshd can respond. The critical metric is: do any SSH handshakes complete from previously banned IPs? If I see version strings from a banned IP, fail2ban isn't working. I'd also compare Sentinel syslog data — failed auth event count should drop to near zero for banned IPs. Packet evidence and log evidence together give you definitive validation."
+    </div>
+  </div>
+
+  <h3>SOC Context &amp; Scenario Questions</h3>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      A Tier 1 analyst escalates a Sentinel alert: "SSH brute force detected." As Tier 2, what's your investigation workflow?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "I'd start by reviewing the Sentinel incident — look at the KQL output for volume (how many attempts, over what time), the attacker IPs, and whether any auth attempts succeeded. If the environment has network packet capture enabled (traffic analytics, NSG flow logs, or Azure Network Watcher), I'd pull a pcap or flow log for that IP during the alert window. In the packet data I'm looking for: tool fingerprinting via SSH version strings (for threat intel), whether the attack is still active, and whether any connections lasted longer than the brute force average (potential successful auth). I'd cross-reference attacker IPs against threat intel platforms — VirusTotal, AbuseIPDB, Shodan. Then document the evidence chain: network IOCs from pcap, auth events from syslog, alert threshold breach from Sentinel. Escalate to Tier 3 if any connections show successful auth or command execution patterns."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      What is T1110 in MITRE ATT&CK and what network indicators would you look for?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "T1110 is the Brute Force technique under Credential Access. It has four sub-techniques: .001 Password Guessing (many passwords against one account), .002 Password Cracking (offline), .003 Password Spraying (one password against many accounts), and .004 Credential Stuffing (using breached credential pairs). For network detection, I look for: high SYN rate to the service port (SSH :22, RDP :3389, SMTP :25), short connection duration distribution (all sessions under 2 seconds), non-standard SSH client version strings for .001/.004, and a wide IP distribution with slower per-IP rate for .003 (spraying tries to stay under detection thresholds). In Wireshark, the IO graph spike pattern also differs — .001 shows a flat high rate from one IP, .003 shows distributed lower rates from many IPs summing to the same total."
+    </div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-question" onclick="toggleQA(this)">
+      You're building a SOC playbook for SSH brute force. What network-level detection criteria would you include?
+      <span class="qa-toggle">+</span>
+    </div>
+    <div class="qa-answer">
+      <strong>Strong answer:</strong> "My network-level detection criteria: <strong>Threshold triggers</strong> — &gt;10 TCP SYN packets/minute to port 22 from a single external IP; average SSH session duration &lt;3 seconds for more than 5 consecutive sessions from same IP; RST rate &gt;80% of SYN rate to port 22. <strong>Signature indicators</strong> — SSH client version strings matching known attack tools (libssh, paramiko, SSH-2.0-Go); KEX algorithm lists with fewer than 5 entries or missing modern algorithms like curve25519. <strong>Behavioral indicators</strong> — Sub-100ms timing between connection attempts; sequential ephemeral source port usage; connections active during off-hours from unexpected geographies. I'd automate detection via NSG flow logs feeding Sentinel, and complement with tshark-based scripts for periodic pcap analysis if the environment supports it."
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem;border-color:var(--accent-dim)">
+    <div class="card-title">Lab Complete — What You've Built</div>
+    <ul>
+      <li>Captured live attack traffic from your Azure VM using tcpdump</li>
+      <li>Analyzed TCP/SSH connection patterns that uniquely identify brute force</li>
+      <li>Extracted attacker tool fingerprints from plaintext SSH version strings</li>
+      <li>Built a Wireshark filter toolkit for SSH triage</li>
+      <li>Used Statistics views to visualize attack scale, timing, and geography</li>
+      <li>Correlated pcap evidence with Sentinel KQL data for a complete incident picture</li>
+      <li>Mapped findings to MITRE T1110 sub-techniques</li>
+      <li>Validated hardening controls at the packet level</li>
+      <li>Practiced answering technical interview questions on network forensics</li>
+    </ul>
+
+    <div class="callout callout-soc" style="margin-top:1rem">
+      <span class="callout-icon">📝</span>
+      <div class="callout-content">
+        <div class="callout-title">LinkedIn Post Hook</div>
+        <div class="callout-text">Used Wireshark to analyze live SSH brute force traffic from my Azure VM. Key finding: automated tools reveal themselves in plaintext <em>before</em> encryption starts — SSH version strings and KEX algorithm lists fingerprint Hydra, Metasploit, and Go-based scanners without decrypting a single byte. Combined with Sentinel KQL data for a full dual-layer evidence chain. T1110 from network to host. 🦈</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border-color:#ff4d9d">
+    <div class="card-title" style="color:#ff4d9d">📍 LinkedIn Capture Checklist</div>
+    <p>Everything you flagged while working through the lab, in order. Grab these as you go — re-creating live attack traffic later is harder than capturing it the first time.</p>
+    <div class="capture-checklist">
+      <div class="cc-row">
+        <div class="cc-badge">📸 01</div>
+        <div class="cc-text"><strong>tcpdump on the live VM</strong> — terminal showing capture running + "X packets captured" (Module 2)</div>
+      </div>
+      <div class="cc-row">
+        <div class="cc-badge">📸 02</div>
+        <div class="cc-text"><strong>The SYN flood</strong> — filtered packet list + status bar count, sub-second timestamps (Module 5)</div>
+      </div>
+      <div class="cc-row">
+        <div class="cc-badge">📸 03</div>
+        <div class="cc-text"><strong>Tool fingerprint</strong> — SSH version string expanded in Packet Details pane (Module 6)</div>
+      </div>
+      <div class="cc-row">
+        <div class="cc-badge">📸 04</div>
+        <div class="cc-text"><strong>1-second connections</strong> — Conversations → TCP sorted by Duration (Module 7)</div>
+      </div>
+      <div class="cc-row video-row">
+        <div class="cc-badge" style="background:rgba(255,77,157,0.25);color:#ff77b3">🎬 VID</div>
+        <div class="cc-text"><strong>THE VIDEO (60–90s)</strong> — raw stream → apply SYN filter → IO Graph spikes render. Square/vertical, captions on (Module 7)</div>
+      </div>
+      <div class="cc-row">
+        <div class="cc-badge">📸 05</div>
+        <div class="cc-text"><strong>Evidence chain</strong> — Wireshark IP list beside Sentinel KQL, matching IPs annotated (Module 9)</div>
+      </div>
+      <div class="cc-row">
+        <div class="cc-badge">📸 06</div>
+        <div class="cc-text"><strong>Before / after</strong> — two status bars: 842 packets vs 0 after hardening (Module 11)</div>
+      </div>
+    </div>
+
+    <div class="callout callout-tip" style="margin-top:1rem">
+      <span class="callout-icon">💡</span>
+      <div class="callout-content">
+        <div class="callout-title">Posting Strategy</div>
+        <div class="callout-text">LinkedIn favors native uploads — post the video directly (not a YouTube link) and use the 6 screenshots as a carousel/document or across follow-up posts. A common high-performing structure: lead with the <strong>video</strong> (the hook), then the <strong>fingerprint shot</strong> (the insight), then the <strong>before/after</strong> (the result). Always blur/crop real attacker IPs only if you choose to — public scanner IPs are generally fine to show, but never expose your own usernames, keys, or internal hostnames.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="module-nav">
+    <button class="nav-btn nav-btn-prev" onclick="goModule(10)">← PREV</button>
+    <span class="module-counter">MODULE 12 OF 12</span>
+    <button class="nav-btn nav-btn-next" disabled>LAB COMPLETE ✓</button>
+  </div>
+</div>
+
+  </main>
+</div>
+
+<script>
+  let currentModule = 0;
+  const totalModules = 12;
+  const completed = new Set();
+
+  function goModule(idx) {
+    // Hide all
+    document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+    // Mark previous as completed
+    if (currentModule !== idx) {
+      completed.add(currentModule);
+    }
+
+    currentModule = idx;
+    document.getElementById('module-' + idx).classList.add('active');
+    document.querySelector(`[data-module="${idx}"]`).classList.add('active');
+
+    // Mark completed in sidebar
+    completed.forEach(i => {
+      const el = document.querySelector(`[data-module="${i}"]`);
+      if (el) el.classList.add('completed');
+    });
+
+    // Update progress
+    const pct = Math.round((completed.size / totalModules) * 100);
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-text').textContent = completed.size + ' / ' + totalModules + ' COMPLETE';
+
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleQA(el) {
+    el.classList.toggle('open');
+    const answer = el.nextElementSibling;
+    answer.classList.toggle('open');
+  }
+
+  function copyCode(btn) {
+    const pre = btn.parentElement.querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = 'COPIED';
+      setTimeout(() => btn.textContent = 'COPY', 1500);
+    });
+  }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' && currentModule < totalModules - 1) goModule(currentModule + 1);
+    if (e.key === 'ArrowLeft' && currentModule > 0) goModule(currentModule - 1);
+  });
+</script>
+</body>
+</html>
