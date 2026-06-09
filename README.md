@@ -81,7 +81,9 @@ tcp.flags.syn==1 and tcp.flags.ack==0 and tcp.dstport==22 and ip.src != <analyst
 
 The attacker IPs shown here were captured against an intentionally exposed lab host and are real internet scanning sources observed during the capture window. No internal or personal infrastructure detail is included; analyst/home IPs have been redacted from all screenshots and queries.
 
----
+--## Walkthrough video
+
+[Watch the full lab walkthrough on YouTube](https://youtu.be/pBsbP3fwEVQ)-
 
 ## License
 
